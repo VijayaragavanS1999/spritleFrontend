@@ -35,11 +35,11 @@ export default function Sidebar() {
       {/* Integration status pills */}
       <div style={styles.statusBar}>
         <div style={styles.statusPill}>
-          <span style={{ ...styles.dot, background: user?.integrations?.freshdesk ? '#10b981' : '#555c6e' }} />
+          <span style={{ ...styles.dot, background: user?.integrations?.freshdesk ? '#10b981' : '#f44227' }} />
           <span style={styles.statusLabel}>Freshdesk</span>
         </div>
         <div style={styles.statusPill}>
-          <span style={{ ...styles.dot, background: user?.integrations?.hubspot ? '#10b981' : '#555c6e' }} />
+          <span style={{ ...styles.dot, background: user?.integrations?.hubspot ? '#10b981' : '#f44227' }} />
           <span style={styles.statusLabel}>HubSpot</span>
         </div>
       </div>

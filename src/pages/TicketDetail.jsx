@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -36,9 +36,9 @@ export default function TicketDetail() {
     fetchTicket();
   }, [id]);
 
-  // Look up HubSpot contact when ticket loads (always attempt — token is server-side)
+  // Look up HubSpot contact when ticket loads
   useEffect(() => {
-    if (!ticket) return;
+    if (!ticket || !user?.integrations?.hubspot) return;
     const email = ticket.requester?.email;
     if (!email) return;
 
@@ -148,7 +148,13 @@ export default function TicketDetail() {
               <h3 style={styles.hubspotTitle}>HubSpot CRM</h3>
             </div>
 
-            {hsLoading ? (
+            {!user?.integrations?.hubspot ? (
+              <div style={styles.hsNote}>
+                <p style={{ fontSize: 12, color: '#8b92a5', lineHeight: 1.6 }}>
+                  Connect HubSpot on the Integrations page to see CRM info for this contact.
+                </p>
+              </div>
+            ) : hsLoading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
                 <div className="spinner" />
               </div>

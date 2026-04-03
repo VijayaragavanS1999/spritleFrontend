@@ -14,7 +14,8 @@ export default function Dashboard() {
       try {
         const promises = [];
         if (user?.integrations?.freshdesk) {
-          promises.push(api.get('/freshdesk/tickets?per_page=1').then(r => r.data));
+          // ?all=true fetches every page and returns { tickets, total }
+          promises.push(api.get('/freshdesk/tickets?all=true').then(r => r.data));
         }
         promises.push(api.get('/webhook/logs?limit=5').then(r => r.data));
 
@@ -23,7 +24,7 @@ export default function Dashboard() {
         let webhookData = { logs: [], pagination: { total: 0 } };
 
         if (user?.integrations?.freshdesk && results[0]?.status === 'fulfilled') {
-          ticketCount = Array.isArray(results[0].value) ? results[0].value.length : 0;
+          ticketCount = results[0].value?.total ?? 0;
           webhookData = results[1]?.value || webhookData;
         } else {
           webhookData = results[0]?.value || webhookData;
@@ -87,7 +88,7 @@ export default function Dashboard() {
         <StatCard
           icon="🎫"
           label="Total Tickets"
-          value={loadingStats ? '—' : (user?.integrations?.freshdesk ? stats.tickets : 'N/A')}
+          value={loadingStats ? '—' : (user?.integrations?.freshdesk ? stats.tickets : '0')}
           sub={user?.integrations?.freshdesk ? 'From Freshdesk' : 'Connect Freshdesk'}
           color="#3b82f6"
           link={user?.integrations?.freshdesk ? '/tickets' : '/integrations'}

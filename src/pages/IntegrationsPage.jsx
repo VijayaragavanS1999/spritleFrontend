@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import api from '../utils/api';
@@ -6,16 +7,19 @@ import api from '../utils/api';
 export default function IntegrationsPage() {
   const { user, refreshUser } = useAuth();
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Freshdesk
   const [fdKey, setFdKey] = useState('');
   const [fdDomain, setFdDomain] = useState('');
   const [fdLoading, setFdLoading] = useState(false);
 
-  // HubSpot — Private App Token status
-  const [hsStatus, setHsStatus] = useState('checking'); // 'checking' | 'connected' | 'error'
+  // HubSpot OAuth
+  const [hsLoading, setHsLoading] = useState(false);
+  const [hsStatus, setHsStatus] = useState('idle'); // idle | checking | connected | error
   const [hsPortalId, setHsPortalId] = useState(null);
 
+  // Check HubSpot status on load
   const checkHsStatus = async () => {
     setHsStatus('checking');
     try {
@@ -31,7 +35,20 @@ export default function IntegrationsPage() {
     }
   };
 
-  useEffect(() => { checkHsStatus(); }, []);
+  // Handle OAuth redirect back from HubSpot
+  useEffect(() => {
+    const hubspotResult = searchParams.get('hubspot');
+    if (hubspotResult === 'connected') {
+      addToast('HubSpot connected successfully!', 'success');
+      setSearchParams({});
+      refreshUser();
+      checkHsStatus();
+    } else if (hubspotResult === 'error') {
+      addToast('HubSpot connection failed. Please try again.', 'error');
+      setSearchParams({});
+    }
+    checkHsStatus();
+  }, []);
 
   const connectFreshdesk = async (e) => {
     e.preventDefault();
@@ -60,23 +77,47 @@ export default function IntegrationsPage() {
     }
   };
 
+  const connectHubSpot = async () => {
+    setHsLoading(true);
+    try {
+      const res = await api.get('/hubspot/auth-url');
+      // Redirect to HubSpot OAuth
+      window.location.href = res.data.url;
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to start HubSpot OAuth', 'error');
+      setHsLoading(false);
+    }
+  };
+
+  const disconnectHubSpot = async () => {
+    try {
+      await api.delete('/hubspot/disconnect');
+      addToast('HubSpot disconnected', 'info');
+      setHsStatus('error');
+      setHsPortalId(null);
+      await refreshUser();
+    } catch {
+      addToast('Failed to disconnect HubSpot', 'error');
+    }
+  };
+
   const webhookUrl = `${window.location.protocol}//${window.location.hostname}:5000/api/webhook/freshdesk`;
 
   return (
     <div style={styles.page} className="fade-in">
       <div style={styles.header}>
         <h1 style={styles.title}>Integrations</h1>
-        <p style={styles.subtitle}>Connect your Freshdesk and HubSpot accounts to power the portal.</p>
+        <p style={styles.subtitle}>
+          Connect your Freshdesk and HubSpot accounts to power the portal.
+        </p>
       </div>
 
       <div style={styles.cards}>
 
-        {/* Freshdesk Card */}
+        {/* ── Freshdesk ── */}
         <div className="card" style={styles.intCard}>
           <div style={styles.cardHeader}>
-            <div style={styles.iconWrap}>
-              <span style={{ fontSize: 24 }}>🟢</span>
-            </div>
+            <div style={styles.iconWrap}><span style={{ fontSize: 24 }}>🟢</span></div>
             <div style={styles.cardInfo}>
               <h2 style={styles.cardTitle}>Freshdesk</h2>
               <p style={styles.cardDesc}>Connect via API key to view and manage support tickets.</p>
@@ -125,9 +166,7 @@ export default function IntegrationsPage() {
                   onChange={e => setFdKey(e.target.value)}
                   required
                 />
-                <p style={styles.fieldHint}>
-                  Find your API key at: Profile Settings → Your API Key
-                </p>
+                <p style={styles.fieldHint}>Profile Settings → Your API Key (top-right avatar in Freshdesk)</p>
               </div>
               <button className="btn btn-primary" type="submit" disabled={fdLoading}>
                 {fdLoading ? <span className="spinner spinner-sm" /> : null}
@@ -137,63 +176,66 @@ export default function IntegrationsPage() {
           )}
         </div>
 
-        {/* HubSpot Card */}
+        {/* ── HubSpot ── */}
         <div className="card" style={styles.intCard}>
           <div style={styles.cardHeader}>
-            <div style={styles.iconWrap}>
-              <span style={{ fontSize: 24 }}>🟠</span>
-            </div>
+            <div style={styles.iconWrap}><span style={{ fontSize: 24 }}>🟠</span></div>
             <div style={styles.cardInfo}>
               <h2 style={styles.cardTitle}>HubSpot</h2>
-              <p style={styles.cardDesc}>Uses a Private App Token configured in the server <code style={{fontSize:11,color:'#f59e0b'}}>.env</code> file.</p>
+              <p style={styles.cardDesc}>Connect via OAuth to look up contacts in your CRM.</p>
             </div>
             <span className={`badge badge-${hsStatus === 'connected' ? 'connected' : hsStatus === 'checking' ? 'pending' : 'disconnected'}`}>
-              {hsStatus === 'checking' ? 'Checking…' : hsStatus === 'connected' ? 'Connected' : 'Not configured'}
+              {hsStatus === 'checking' ? 'Checking…' : hsStatus === 'connected' ? 'Connected' : 'Not connected'}
             </span>
           </div>
 
-          <div style={styles.connectedInfo}>
-            {hsStatus === 'connected' ? (
-              <>
-                <div style={styles.connectedRow}>
-                  <span style={styles.connectedLabel}>Auth Method</span>
-                  <code style={styles.connectedVal}>Private App Token</code>
-                </div>
-                <div style={styles.connectedRow}>
-                  <span style={styles.connectedLabel}>Portal ID</span>
-                  <code style={styles.connectedVal}>{hsPortalId || '—'}</code>
-                </div>
-                <div style={styles.connectedRow}>
-                  <span style={styles.connectedLabel}>Token</span>
-                  <code style={styles.connectedVal}>pat-na2-••••••••</code>
-                </div>
-              </>
-            ) : (
-              <div style={styles.oauthDesc}>
-                <p style={{ fontSize: 13, color: '#8b92a5', lineHeight: 1.7, marginBottom: 12 }}>
-                  Add your Private App Token to <code style={{color:'#f59e0b',fontSize:12}}>backend/.env</code>:
-                </p>
-                <div className="code-block" style={{ fontSize: 12 }}>
-                  {`HUBSPOT_PRIVATE_TOKEN=pat-na2-your-token-here`}
-                </div>
-                <p style={{ fontSize: 11, color: '#555c6e', marginTop: 10, lineHeight: 1.6 }}>
-                  Get it from: <strong style={{color:'#8b92a5'}}>HubSpot → Settings → Integrations → Private Apps → Create</strong>
-                  <br />Required scope: <code style={{color:'#3b82f6',fontSize:11}}>crm.objects.contacts.read</code>
-                </p>
-                <button className="btn btn-secondary btn-sm" style={{marginTop:12}} onClick={checkHsStatus}>
-                  ↻ Re-check connection
+          {hsStatus === 'connected' ? (
+            <div style={styles.connectedInfo}>
+              <div style={styles.connectedRow}>
+                <span style={styles.connectedLabel}>Auth Method</span>
+                <code style={styles.connectedVal}>OAuth 2.0</code>
+              </div>
+              <div style={styles.connectedRow}>
+                <span style={styles.connectedLabel}>Portal ID</span>
+                <code style={styles.connectedVal}>{hsPortalId || '—'}</code>
+              </div>
+              <div style={styles.connectedRow}>
+                <span style={styles.connectedLabel}>Token</span>
+                <code style={styles.connectedVal}>Active ✓</code>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button className="btn btn-secondary btn-sm" onClick={connectHubSpot} disabled={hsLoading}>
+                  {hsLoading ? <span className="spinner spinner-sm" /> : 'Reconnect'}
+                </button>
+                <button className="btn btn-danger btn-sm" onClick={disconnectHubSpot}>
+                  Disconnect
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div style={styles.form}>
+              <p style={styles.oauthDesc}>
+                Click below to authorize this portal to access your HubSpot CRM.
+                You'll be redirected to HubSpot to approve access.
+              </p>
+              <div style={styles.oauthScopes}>
+                <span style={styles.scope}>crm.objects.contacts.read</span>
+                <span style={styles.scope}>crm.objects.contacts.write</span>
+                <span style={styles.scope}>oauth</span>
+              </div>
+              <button className="btn btn-primary" onClick={connectHubSpot} disabled={hsLoading}>
+                {hsLoading ? <span className="spinner spinner-sm" /> : '🟠'}
+                Connect with HubSpot
+              </button>
+              
+            </div>
+          )}
         </div>
 
-        {/* Webhook Setup Card */}
+        {/* ── Webhook Setup ── */}
         <div className="card" style={{ ...styles.intCard, gridColumn: '1 / -1' }}>
           <div style={styles.cardHeader}>
-            <div style={styles.iconWrap}>
-              <span style={{ fontSize: 24 }}>⚡</span>
-            </div>
+            <div style={styles.iconWrap}><span style={{ fontSize: 24 }}>⚡</span></div>
             <div style={styles.cardInfo}>
               <h2 style={styles.cardTitle}>Freshdesk Webhook</h2>
               <p style={styles.cardDesc}>Configure Freshdesk to send events to your portal in real time.</p>
@@ -222,8 +264,7 @@ export default function IntegrationsPage() {
                 <div style={styles.stepTitle}>Create an Automation in Freshdesk</div>
                 <p style={styles.stepDesc}>
                   Go to <strong>Admin → Workflows → Automations → Ticket Creation / Updates</strong>.
-                  Create a new rule and add a <em>Trigger Webhook</em> action.
-                  Paste the URL above and set method to <code>POST</code>.
+                  Add a <em>Trigger Webhook</em> action with method <code>POST</code> and paste the URL above.
                 </p>
               </div>
             </div>
@@ -232,8 +273,7 @@ export default function IntegrationsPage() {
               <div style={styles.stepBody}>
                 <div style={styles.stepTitle}>Verify in Webhook Logs</div>
                 <p style={styles.stepDesc}>
-                  Create or update a ticket in Freshdesk — the event will appear in the
-                  <strong> Webhook Logs</strong> page within seconds.
+                  Create or update a ticket in Freshdesk — it will appear in the <strong>Webhook Logs</strong> page within seconds.
                 </p>
               </div>
             </div>
@@ -259,7 +299,7 @@ const styles = {
   cardDesc: { fontSize: 12, color: '#8b92a5', lineHeight: 1.6 },
   form: { display: 'flex', flexDirection: 'column', gap: 14, borderTop: '1px solid #2a2e38', paddingTop: 20 },
   field: { display: 'flex', flexDirection: 'column', gap: 6 },
-  fieldHint: { fontSize: 11, color: '#555c6e', marginTop: 4 },
+  fieldHint: { fontSize: 11, color: '#555c6e', marginTop: 4, lineHeight: 1.6 },
   inputGroup: { display: 'flex' },
   inputSuffix: {
     background: '#22262f', border: '1px solid #2a2e38',
@@ -269,9 +309,8 @@ const styles = {
   },
   connectedInfo: { borderTop: '1px solid #2a2e38', paddingTop: 20, display: 'flex', flexDirection: 'column', gap: 10 },
   connectedRow: { display: 'flex', alignItems: 'center', gap: 12 },
-  connectedLabel: { fontSize: 11, color: '#555c6e', width: 80 },
+  connectedLabel: { fontSize: 11, color: '#555c6e', width: 90 },
   connectedVal: { fontSize: 12, color: '#f59e0b', background: '#f59e0b0a', padding: '2px 8px', borderRadius: 4, fontFamily: 'monospace' },
-  hsActions: { display: 'flex', gap: 8, marginTop: 4 },
   oauthDesc: { fontSize: 13, color: '#8b92a5', lineHeight: 1.7 },
   oauthScopes: { display: 'flex', gap: 8, flexWrap: 'wrap' },
   scope: { background: '#3b82f618', color: '#3b82f6', fontSize: 11, padding: '3px 8px', borderRadius: 4, fontFamily: 'monospace' },
