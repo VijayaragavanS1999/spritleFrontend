@@ -2,6 +2,124 @@ import { useEffect, useState, useCallback } from 'react';
 import api from '../utils/api';
 import { useToast } from '../context/ToastContext';
 
+// ─── Payload resolution helper ───────────────────────────────────────────────
+function resolvePayload(payload) {
+  if (!payload) return {};
+
+  // Case 1: { raw: "..." }
+  if (payload.raw) {
+    try { return JSON.parse(payload.raw); } catch (_) {}
+  }
+
+  // Case 2: Form-encoded misparse — entire JSON blob became a key
+  const keys = Object.keys(payload);
+  if (keys.length === 1 && keys[0].trim().startsWith('{')) {
+    try { return JSON.parse(keys[0]); } catch (_) {}
+  }
+
+  return payload;
+}
+
+// ─── PayloadViewer ────────────────────────────────────────────────────────────
+function PayloadViewer({ payload }) {
+  const resolved = resolvePayload(payload);
+  const ticket = resolved?.ticket || resolved?.freshdesk_webhook?.ticket;
+
+  return (
+    <div>
+      {ticket && (
+        <>
+          <div style={payloadStyles.sectionLabel}>Ticket</div>
+          <div style={payloadStyles.card}>
+            {ticket.id && <PayloadField label="ID" value={`#${ticket.id}`} mono />}
+            {ticket.subject && <PayloadField label="Subject" value={ticket.subject} />}
+            {ticket.status && (
+              <PayloadField
+                label="Status"
+                value={
+                  <span style={{
+                    ...payloadStyles.badge,
+                    background: ticket.status === 'Open' ? '#f59e0b22' : '#10b98122',
+                    color: ticket.status === 'Open' ? '#f59e0b' : '#10b981',
+                    border: `1px solid ${ticket.status === 'Open' ? '#f59e0b44' : '#10b98144'}`,
+                  }}>
+                    {ticket.status}
+                  </span>
+                }
+              />
+            )}
+            {ticket.priority && <PayloadField label="Priority" value={ticket.priority} />}
+            {ticket.type && <PayloadField label="Type" value={ticket.type} />}
+            {ticket.description && (
+              <PayloadField
+                label="Description"
+                value={
+                  <span style={{ color: '#8b92a5', fontSize: 11 }}>
+                    {ticket.description.replace(/<[^>]*>/g, ' ').trim()}
+                  </span>
+                }
+              />
+            )}
+            {ticket.requester_id && <PayloadField label="Requester ID" value={ticket.requester_id} mono />}
+            {ticket.created_at && (
+              <PayloadField label="Created" value={new Date(ticket.created_at).toLocaleString()} />
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PayloadField({ label, value, mono }) {
+  return (
+    <div style={payloadStyles.field}>
+      <span style={payloadStyles.fieldLabel}>{label}</span>
+      {typeof value === 'string' || typeof value === 'number' ? (
+        <span style={{ ...payloadStyles.fieldValue, fontFamily: mono ? 'monospace' : 'inherit' }}>
+          {value}
+        </span>
+      ) : (
+        value
+      )}
+    </div>
+  );
+}
+
+const payloadStyles = {
+  sectionLabel: {
+    fontSize: 11, color: '#555c6e', fontWeight: 600,
+    textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8,
+  },
+  card: {
+    background: '#14161b', border: '1px solid #1f2229',
+    borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 8,
+  },
+  field: { display: 'flex', gap: 12, alignItems: 'flex-start' },
+  fieldLabel: { fontSize: 11, color: '#555c6e', width: 90, flexShrink: 0, paddingTop: 1 },
+  fieldValue: { fontSize: 12, color: '#f0f2f7', wordBreak: 'break-all' },
+  badge: { fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 500 },
+};
+
+// ─── DetailRow ────────────────────────────────────────────────────────────────
+function DetailRow({ label, value, mono }) {
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 10 }}>
+      <span style={{ fontSize: 11, color: '#555c6e', width: 90, flexShrink: 0, paddingTop: 1 }}>
+        {label}
+      </span>
+      <span style={{
+        fontSize: 12, color: '#f0f2f7',
+        fontFamily: mono ? 'monospace' : 'inherit',
+        wordBreak: 'break-all',
+      }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function WebhooksPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,9 +140,7 @@ export default function WebhooksPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   // Auto-refresh every 5s
   useEffect(() => {
@@ -50,12 +166,14 @@ export default function WebhooksPage() {
   };
 
   const formatTime = (str) => new Date(str).toLocaleString('en-IN', {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
 
   return (
     <div style={styles.page} className="fade-in">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Webhook Logs</h1>
@@ -81,7 +199,8 @@ export default function WebhooksPage() {
       </div>
 
       <div style={styles.layout}>
-        {/* Log list */}
+
+        {/* ── Log List ── */}
         <div style={styles.logList}>
           {loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
@@ -91,7 +210,7 @@ export default function WebhooksPage() {
             <div className="empty-state">
               <div className="empty-state-icon">⚡</div>
               <h3>No webhook events yet</h3>
-              <p>Configure a Freshdesk webhook pointing to your backend endpoint. Events will appear here in real time.</p>
+              <p>Configure a Freshdesk webhook pointing to your backend endpoint.</p>
               <div style={styles.endpointHint}>
                 <code style={styles.endpointCode}>POST /api/webhook/freshdesk</code>
               </div>
@@ -148,7 +267,7 @@ export default function WebhooksPage() {
           )}
         </div>
 
-        {/* Detail panel */}
+        {/* ── Detail Panel ── */}
         <div style={styles.detailPanel}>
           {selected ? (
             <div className="fade-in">
@@ -163,6 +282,7 @@ export default function WebhooksPage() {
                 </button>
               </div>
 
+              {/* Meta info */}
               <div style={styles.detailMeta}>
                 <DetailRow label="Event Type" value={selected.eventType} mono />
                 <DetailRow label="Source" value={selected.source} />
@@ -171,19 +291,8 @@ export default function WebhooksPage() {
                 <DetailRow label="IP Address" value={selected.ipAddress || '—'} mono />
               </div>
 
-              <div style={styles.payloadLabel}>Payload</div>
-              <div className="code-block">
-                {JSON.stringify(selected.payload, null, 2)}
-              </div>
-
-              {selected.headers && Object.keys(selected.headers).length > 0 && (
-                <>
-                  <div style={{ ...styles.payloadLabel, marginTop: 16 }}>Headers</div>
-                  <div className="code-block">
-                    {JSON.stringify(selected.headers, null, 2)}
-                  </div>
-                </>
-              )}
+              {/* Smart payload viewer */}
+              <PayloadViewer payload={selected.payload} />
             </div>
           ) : (
             <div style={styles.detailEmpty}>
@@ -192,30 +301,21 @@ export default function WebhooksPage() {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
 }
 
-function DetailRow({ label, value, mono }) {
-  return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 10 }}>
-      <span style={{ fontSize: 11, color: '#555c6e', width: 90, flexShrink: 0, paddingTop: 1 }}>{label}</span>
-      <span style={{ fontSize: 12, color: '#f0f2f7', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = {
   page: { padding: '32px 40px', height: '100%', display: 'flex', flexDirection: 'column' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexShrink: 0 },
   title: { fontFamily: 'DM Serif Display', fontSize: 28, color: '#f0f2f7', marginBottom: 4 },
   subtitle: { fontSize: 13, color: '#8b92a5' },
   actions: { display: 'flex', gap: 8, alignItems: 'center' },
-  liveDot: { width: 6, height: 6, borderRadius: '50%', display: 'inline-block' },
-  layout: { display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, flex: 1, minHeight: 0 },
+  liveDot: { width: 6, height: 6, borderRadius: '50%', display: 'inline-block', marginRight: 6 },
+  layout: { display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20, flex: 1, minHeight: 0 },
   logList: { overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 },
   logRow: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',

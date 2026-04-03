@@ -118,12 +118,6 @@ export default function AuthPage() {
               {mode === 'login' ? 'Sign In' : 'Create Account'}
             </button>
           </form>
-
-          {mode === 'login' && (
-            <p style={styles.hint}>
-              Demo: <code style={styles.code}>demo@example.com</code> / <code style={styles.code}>demo123</code>
-            </p>
-          )}
         </div>
       </div>
     </div>
