@@ -90,8 +90,8 @@ App runs at: `http://localhost:3000`
 ## Sample User Credentials
 
 ```
-Email:    demo@example.com
-Password: demo123
+Email:    demo@gmail.com
+Password: 123456
 ```
 
 > After login, go to **Integrations** to connect your Freshdesk and HubSpot accounts.
@@ -112,7 +112,3 @@ Deploy the `build/` folder to **Vercel** or **Netlify**.
 > ```
 
 ---
-
-## License
-
-Built for Spritle Software evaluation. Private & Confidential.
